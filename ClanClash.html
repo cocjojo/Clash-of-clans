@@ -1,0 +1,175 @@
+<!DOCTYPE html><html lang="de"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><title>Clan Clash</title><link rel="icon" href="data:,">
+<style>
+:root{--bg:#f3efe4;--fg:#2a2a22;--p:#fff;--b:#c9bfa5;--ac:#d35400;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);color-scheme:light}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d2118;--fg:#ece8da;--p:#2b3024;--b:#4a503f;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#1d2118;--fg:#ece8da;--p:#2b3024;--b:#4a503f;color-scheme:dark}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px system-ui,sans-serif;display:flex;justify-content:center}
+#app{width:100%;max-width:760px;padding:8px}
+#top{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:6px}
+#top span{background:var(--p);border:1px solid var(--b);border-radius:8px;padding:4px 8px;font-weight:600}
+canvas{width:100%;display:block;border-radius:10px;border:2px solid var(--b);touch-action:none}
+button{background:var(--p);color:var(--fg);border:1px solid var(--b);border-radius:8px;padding:8px 12px;margin:3px;font:inherit;cursor:pointer}
+button:hover{border-color:var(--ac)}button.on{background:var(--ac);color:#fff}
+#msg{min-height:20px;margin:4px 0;font-weight:600}
+#panel{background:var(--p);border:1px solid var(--b);border-radius:10px;padding:8px;margin-top:4px}
+.adm{border-color:#c0392b!important;color:#c0392b}
+small{opacity:.75}
+</style></head><body><div id="app">
+<div id="top"><span id="g"></span><span id="m"></span><span id="tr"></span><span id="bu"></span><button id="ab" class="adm" onclick="togAdm()">Admin</button></div>
+<canvas id="c" width="720" height="720"></canvas><div id="msg"></div>
+<div id="nav"><button onclick="goHome()">Dorf</button><button onclick="pBuild()">Bauen</button><button onclick="pArmy()">Armee</button><button onclick="attack()">Angriff</button></div>
+<div id="panel"></div></div>
+<script>
+const T=30,N=24,cv=document.getElementById('c'),ctx=cv.getContext('2d'),$=i=>document.getElementById(i);
+const D={
+hall:{n:'Rathaus',s:3,c:'#c0392b',e:'🏰',hp:500,cost:400,max:1},
+mine:{n:'Goldmine',s:2,c:'#f1c40f',e:'⛏️',hp:150,cost:100,max:4,res:'gold'},
+well:{n:'Mana-Pumpe',s:2,c:'#b05bd6',e:'💧',hp:150,cost:100,max:4,res:'mana'},
+gst:{n:'Goldlager',s:2,c:'#b7950b',e:'🏦',hp:300,cost:200,max:3},
+mst:{n:'Mana-Lager',s:2,c:'#7d3c98',e:'⚗️',hp:300,cost:200,max:3},
+bar:{n:'Kaserne',s:2,c:'#27ae60',e:'⚔️',hp:250,cost:300,max:2},
+camp:{n:'Armeelager',s:2,c:'#16a085',e:'⛺',hp:250,cost:250,max:4},
+can:{n:'Kanone',s:2,c:'#555',e:'💣',hp:250,cost:250,max:5,dmg:14,rng:5,rate:.9,def:1},
+tow:{n:'Bogenturm',s:2,c:'#8e6b3e',e:'🏹',hp:200,cost:300,max:5,dmg:9,rng:7.5,rate:.6,def:1},
+wall:{n:'Mauer',s:1,c:'#95a5a6',e:'🧱',hp:350,cost:50,max:60,fast:1},
+mort:{n:'Mörser',s:2,c:'#6c5b7b',e:'🎯',hp:220,cost:350,max:3,dmg:24,rng:9,rate:2.4,def:1},
+wiz:{n:'Magierturm',s:2,c:'#3498db',e:'🔮',hp:200,cost:400,max:3,dmg:18,rng:6,rate:1.1,def:1},
+fla:{n:'Flammenturm',s:2,c:'#e74c3c',e:'🔥',hp:260,cost:500,max:2,dmg:28,rng:3.5,rate:.5,def:1},
+hut:{n:'Bauhütte',s:2,c:'#a0522d',e:'🛖',hp:150,cost:500,max:2},
+tree:{n:'Baum',s:1,c:'#2d7a2d',e:'🌳',hp:50,cost:30,max:25,fast:1},
+pond:{n:'Teich',s:2,c:'#4aa3df',e:'🌊',hp:50,cost:150,max:4,fast:1}};
+const U={w:{n:'Krieger',e:'🗡️',c:25,sz:1,hp:55,dmg:9,spd:1.9,rng:.4,col:'#e67e22'},
+a:{n:'Bogenschütze',e:'🏹',c:50,sz:1,hp:28,dmg:8,spd:1.7,rng:3.5,col:'#2ecc71'},
+g:{n:'Gigant',e:'🗿',c:250,sz:5,hp:400,dmg:15,spd:1.1,rng:.5,col:'#9b59b6'}};
+let S,mv=null,mode='home',sel=null,placing=null,B=null,hov=null,sk='w',lastSave=0,lastUi=0;
+const mk=(t,x,y,l=1)=>({t,x,y,l,col:0,up:0,nl:0});
+function init(){try{S=JSON.parse(localStorage.getItem('cc1'))}catch(e){}
+if(!S)S={gold:800,mana:600,trophies:0,adm:false,god:false,w:0,a:0,g:0,last:Date.now(),
+b:[mk('hall',8,8),mk('mine',4,4),mk('well',14,4),mk('gst',4,13),mk('camp',14,13),mk('bar',9,14),mk('can',12,9)]};
+S.adm=false;S.god=false;tick(Math.min((Date.now()-S.last)/1000,3600));S.last=Date.now();ui()}
+const save=()=>{S.last=Date.now();try{localStorage.setItem('cc1',JSON.stringify(S))}catch(e){}};
+const hall=()=>S.b.find(b=>b.t=='hall');
+const maxL=t=>t=='hall'?5:Math.min(5,hall().l+1);
+const lv=t=>S.b.filter(b=>b.t==t&&b.l>0).reduce((a,b)=>a+b.l,0);
+const cap=()=>1000+500*hall().l+1500*lv('gst');
+const capM=()=>1000+500*hall().l+1500*lv('mst');
+const house=()=>S.w+S.a+5*S.g,hcap=()=>20+10*lv('camp');
+const fmt=ms=>{const s=Math.ceil(ms/1000);return Math.floor(s/60)+':'+String(s%60).padStart(2,'0')};
+const msg=t=>{$('msg').textContent=t};
+const nBu=()=>2+(hall().l>=3)+(hall().l>=5)+S.b.filter(b=>b.t=='hut'&&b.l>0).length,busy=()=>S.b.filter(b=>b.up).length;
+const buTxt=()=>'👷 '+(S.adm?'∞':(nBu()-busy())+' / '+nBu());
+function canB(){if(S.adm||busy()<nBu())return true;msg('Alle Bauarbeiter sind beschäftigt!');return false}
+function pay(c,r='gold'){if(S.adm)return true;if(S[r]<c){msg('Zu wenig '+(r=='gold'?'Gold':'Mana')+'!');return false}S[r]-=c;return true}
+function tick(dt){const now=Date.now();S.b.forEach(b=>{if(b.up&&now>=b.up){b.l=b.nl;b.up=0}
+if(b.l>0&&D[b.t].res)b.col=Math.min(b.col+1.5*b.l*dt*(S.adm?10:1),300*b.l)})}
+function ui(){$('g').textContent='🪙 '+(S.adm?'∞':Math.floor(S.gold)+' / '+cap());$('m').textContent='💧 '+(S.adm?'∞':Math.floor(S.mana)+' / '+capM());
+$('tr').textContent='🏆 '+S.trophies;$('bu').textContent=buTxt();$('ab').textContent=S.adm?'Admin: AN':'Admin';$('ab').classList.toggle('on',S.adm);
+if(login)pLogin();else if(mode=='battle')pBattle();else if(mv)pMove();else if(placing)pPlace();else if(sel)pSel();else if(mode=='army')pArmy();else if(mode=='build')pBuild();else $('panel').innerHTML=admHtml()+'<small>Tippe auf ein Gebäude. Sammle Ressourcen, baue aus, trainiere Truppen und greife an.</small>'}
+function admHtml(){if(!S.adm)return'';return`<div><b class=adm>Admin-Modus</b> – alles unendlich, Sofortbau, Truppen gratis<br><button onclick="maxAll()">Alles auf Max</button><button onclick="gift()">+50 Truppen jeder Art</button><button class="${S.god?'on':''}" onclick="S.god=!S.god;ui()">Unbesiegbare Truppen</button></div>`}
+let login=false;
+function togAdm(){if(S.adm){S.adm=false;msg('Admin-Modus aus');ui();save();return}if(mode=='battle'){msg('Bitte im Dorf anmelden');return}login=!login;ui();if(login)setTimeout(()=>{const e=$('pw');if(e)e.focus()},50)}
+function pLogin(){$('panel').innerHTML=`<b>Admin-Login</b><br><input id="pw" type="password" placeholder="Passwort" onkeydown="if(event.key=='Enter')chk()" style="padding:8px;border-radius:8px;border:1px solid var(--b);background:var(--bg);color:var(--fg)"><button onclick="chk()">OK</button><button onclick="login=false;ui()">Abbrechen</button>`}
+function chk(){if($('pw').value==='1234'){S.adm=true;login=false;msg('Admin-Modus aktiviert');ui();save()}else{msg('Falsches Passwort');$('pw').value=''}}
+function maxAll(){S.b.forEach(b=>{b.l=5;b.up=0});['gold','mana'].forEach(r=>S[r]=Math.max(S[r],5000));msg('Alle Gebäude Stufe 5');ui()}
+function gift(){S.w+=50;S.a+=50;S.g+=50;msg('Truppen hinzugefügt');ui()}
+function goHome(){mode='home';sel=null;mv=null;placing=null;B=null;msg('');ui()}
+function pBuild(){if(mode=='battle')return;mode='build';sel=null;mv=null;placing=null;let h=admHtml()+'<b>Bauen</b> (Gold)<br>';
+for(const t in D){if(t=='hall')continue;const n=S.b.filter(b=>b.t==t).length;h+=`<button ${n>=D[t].max?'disabled':''} onclick="startPlace('${t}')">${D[t].e} ${D[t].n} ${D[t].cost} 🪙 (${n}/${D[t].max})</button>`}
+$('panel').innerHTML=h}
+function startPlace(t){placing=t;msg('Tippe aufs Feld zum Platzieren');pPlace()}
+function pPlace(){$('panel').innerHTML=`Platziere: <b>${D[placing].n}</b> <button onclick="placing=null;pBuild()">Abbrechen</button>`}
+function pArmy(){if(mode=='battle')return;mode='army';sel=null;mv=null;placing=null;const bar=S.b.some(b=>b.t=='bar'&&b.l>0);
+let h=admHtml()+`<b>Armee</b> ${S.adm?'∞':house()+' / '+hcap()}${bar?'':' – Kaserne nötig!'}<br>`;
+for(const k in U){const u=U[k];h+=`<button ${bar?'':'disabled'} onclick="train('${k}')">${u.e} ${u.n} ${u.c} 💧 (Platz ${u.sz}) – ${S[k]}x</button>`}
+$('panel').innerHTML=h}
+function train(k){const u=U[k];if(!S.adm&&house()+u.sz>hcap()){msg('Armeelager voll!');return}if(pay(u.c,'mana')){S[k]++;pArmy();ui2()}}
+const ui2=()=>{$('g').textContent=$('g').textContent;ui()};
+const cost=b=>D[b.t].cost*b.l*2;
+function pSel(){const b=sel,d=D[b.t];let h=admHtml()+`<b>${d.e} ${d.n}</b> Stufe ${b.l} `;
+if(b.up)h+=`– Bau läuft: ${fmt(b.up-Date.now())}`;else{if(b.l<maxL(b.t))h+=`<button onclick="upg()">Ausbauen auf ${b.l+1} (${cost(b)} 🪙)</button>`;else h+='(max)';
+if(d.res)h+=`<button onclick="coll()">Einsammeln (${Math.floor(b.col)})</button>`}
+if(!b.up)h+='<button onclick="startMove()">Verschieben</button>';
+h+='<button onclick="sel=null;ui()">Schließen</button>';$('panel').innerHTML=h}
+function startMove(){mv=sel;msg('Tippe auf den neuen Platz');ui()}
+function pMove(){$('panel').innerHTML=`Verschiebe: <b>${D[mv.t].n}</b> <button onclick="mv=null;msg('');ui()">Abbrechen</button>`}
+function upg(){const b=sel;if(D[b.t].fast){if(pay(cost(b))){b.l++;ui()}return}if(!canB())return;if(pay(cost(b))){b.nl=b.l+1;b.up=Date.now()+(S.adm?0:8000*b.l*b.l);msg('Ausbau gestartet');ui()}}
+function coll(){const b=sel,r=D[b.t].res,c=r=='gold'?cap():capM();const g=Math.floor(b.col);
+const add=S.adm?g:Math.max(0,Math.min(g,c-S[r]));if(!add&&!S.adm){msg('Lager voll!');return}S[r]+=add;b.col-=add;ui()}
+function tileOf(e){const r=cv.getBoundingClientRect();return[(e.clientX-r.left)/r.width*N,(e.clientY-r.top)/r.height*N]}
+cv.addEventListener('pointermove',e=>{hov=tileOf(e)});
+cv.addEventListener('pointerdown',e=>{const[tx,ty]=tileOf(e);
+if(mode=='battle'){deploy(tx,ty);return}
+if(mv){const s=D[mv.t].s,x0=Math.max(0,Math.min(N-s,Math.round(tx-s/2))),y0=Math.max(0,Math.min(N-s,Math.round(ty-s/2)));if(!free(S.b.filter(b=>b!==mv),x0,y0,s)){msg('Hier ist kein Platz!');return}mv.x=x0;mv.y=y0;mv=null;msg('Verschoben');ui();save();return}
+if(placing){const s=D[placing].s,x0=Math.max(0,Math.min(N-s,Math.round(tx-s/2))),y0=Math.max(0,Math.min(N-s,Math.round(ty-s/2)));
+if(!free(S.b,x0,y0,s)){msg('Hier ist kein Platz!');return}
+if(D[placing].fast){if(S.b.filter(b=>b.t==placing).length>=D[placing].max){msg('Maximale Anzahl erreicht');return}if(pay(D[placing].cost)){S.b.push(mk(placing,x0,y0,1));msg('Gebaut – tippe weiter oder Abbrechen');ui()}return}
+if(!canB())return;
+if(pay(D[placing].cost)){const b=mk(placing,x0,y0,0);b.nl=1;b.up=Date.now()+(S.adm?0:6000);S.b.push(b);placing=null;mode='home';msg('Bau gestartet');ui()}return}
+const b=at(S.b,tx,ty);if(b){sel=b;mode='home';ui()}else{sel=null;ui()}});
+function at(l,tx,ty){return l.find(b=>b.hp!==0&&tx>=b.x&&tx<b.x+D[b.t].s&&ty>=b.y&&ty<b.y+D[b.t].s)}
+function free(l,x0,y0,s){if(x0<0||y0<0||x0+s>N||y0+s>N)return false;return!l.some(b=>{const z=D[b.t].s;return x0<b.x+z&&b.x<x0+s&&y0<b.y+z&&b.y<y0+s})}
+/* ---- Kampf ---- */
+function attack(){if(mode=='battle')return;if(!S.w&&!S.a&&!S.g){msg('Trainiere zuerst Truppen!');pArmy();return}
+const L=hall().l,list=[];
+const add=t=>{const s=D[t].s;for(let i=0;i<80;i++){const x0=2+Math.floor(Math.random()*(N-4-s+1)),y0=2+Math.floor(Math.random()*(N-4-s+1));
+if(free(list,x0,y0,s)){const l=1+Math.floor(Math.random()*L),mx=D[t].hp*(1+.4*(l-1));list.push({t,x:x0,y:y0,l,hp:mx,mx,cd:0});return}}};
+add('hall');['gst','gst','mst','mine','mine','well','camp','camp','bar'].forEach(add);
+for(let i=0;i<1+Math.ceil(L/2);i++)add('can');for(let i=0;i<1+Math.floor(L/2);i++)add('tow');for(let i=0;i<Math.floor(L/2);i++){add('mort');add('wiz')}if(L>=3)add('fla');
+const H=list.find(b=>b.t=='hall');if(H)for(let i=-1;i<=3;i++)for(let j=-1;j<=3;j++){if(i>-1&&i<3&&j>-1&&j<3)continue;if(free(list,H.x+i,H.y+j,1)){const l=1+Math.floor(Math.random()*L),mx=D.wall.hp*(1+.4*(l-1));list.push({t:'wall',x:H.x+i,y:H.y+j,l,hp:mx,mx,cd:0})}}
+const army={w:S.w,a:S.a,g:S.g};
+B={e:list,tot:list.filter(b=>b.t!='wall').length,dead:0,u:[],fx:[],t:150,over:false,army,gold:400+350*L+Math.floor(Math.random()*300),mana:300+250*L+Math.floor(Math.random()*300),hallDown:false,res:null};
+mode='battle';sel=null;mv=null;placing=null;sk=S.w?'w':S.a?'a':'g';msg('Tippe an den Spielfeldrand, um Truppen zu platzieren');ui()}
+function pct(){return Math.round(B.dead/B.tot*100)}
+function stars(){return(B.hallDown?1:0)+(pct()>=50?1:0)+(pct()>=100?1:0)}
+function pBattle(){if(B.res){$('panel').innerHTML=B.res+'<br><button onclick="goHome()">Heimkehren</button>';return}
+let h=`⭐ ${stars()}/3 · ${pct()}% · ⏱ ${Math.ceil(B.t)}s<br>`;
+for(const k in U)h+=`<button class="${sk==k?'on':''}" ${B.army[k]?'':'disabled'} onclick="sk='${k}';ui()">${U[k].e} ${U[k].n} ${B.army[k]}x</button>`;
+h+='<button onclick="endB()">Rückzug</button>';$('panel').innerHTML=h}
+function deploy(tx,ty){if(B.over||!B.army[sk])return;if(!(tx<2||ty<2||tx>=N-2||ty>=N-2)){msg('Nur am Rand platzieren!');return}
+const u=U[sk];B.army[sk]--;S[sk]--;B.u.push({k:sk,x:tx,y:ty,hp:u.hp,mx:u.hp,cd:0,tg:null});if(!B.army[sk]){sk=Object.keys(U).find(k=>B.army[k])||sk}pBattle()}
+function endB(){if(B.over)return;B.over=true;const s=stars(),p=pct()/100;
+const g=Math.floor(B.gold*p),m=Math.floor(B.mana*p);
+S.gold=S.adm?S.gold+g:Math.min(Math.max(S.gold,cap()),S.gold+g);S.mana=S.adm?S.mana+m:Math.min(Math.max(S.mana,capM()),S.mana+m);
+const tr=s?10*s:-10;S.trophies=Math.max(0,S.trophies+tr);
+B.res=`<b>${s?'Sieg!':'Niederlage'}</b> ${'⭐'.repeat(s)||'–'} ${pct()}% zerstört<br>Beute: 🪙 ${g} · 💧 ${m} · 🏆 ${tr>0?'+':''}${tr}`;save();ui()}
+function updB(dt){if(B.over)return;B.t-=dt;
+for(const u of B.u){if(u.hp<=0)continue;const d=U[u.k];
+if(!u.tg||u.tg.hp<=0){let c=B.e.filter(b=>b.hp>0&&b.t!='wall');if(u.k=='g'){const df=c.filter(b=>D[b.t].def);if(df.length)c=df}
+let best=1e9;u.tg=null;for(const b of c){const s=D[b.t].s,dd=Math.hypot(b.x+s/2-u.x,b.y+s/2-u.y);if(dd<best){best=dd;u.tg=b}}}
+const b=u.tg;if(!b)continue;const s=D[b.t].s,cx=b.x+s/2,cy=b.y+s/2,dx=cx-u.x,dy=cy-u.y,dist=Math.hypot(dx,dy),reach=d.rng+s/2;
+if(dist>reach){const nx=u.x+dx/dist*d.spd*dt,ny=u.y+dy/dist*d.spd*dt,w=B.e.find(q=>q.t=='wall'&&q.hp>0&&nx>=q.x&&nx<q.x+1&&ny>=q.y&&ny<q.y+1);
+if(w){u.cd-=dt;if(u.cd<=0){u.cd=1;w.hp-=d.dmg*(u.k=='g'?2:1);if(w.hp<=0)w.hp=0}}else{u.x=nx;u.y=ny}}
+else{u.cd-=dt;if(u.cd<=0){u.cd=1;b.hp-=d.dmg;if(d.rng>1)B.fx.push({x1:u.x,y1:u.y,x2:cx,y2:cy,t:.15,c:'#2ecc71'});
+if(b.hp<=0){b.hp=0;B.dead++;if(b.t=='hall')B.hallDown=true}}}}
+for(const b of B.e){const d=D[b.t];if(b.hp<=0||!d.def)continue;b.cd-=dt;if(b.cd>0)continue;
+const s=d.s,cx=b.x+s/2,cy=b.y+s/2;let best=d.rng,tg=null;for(const u of B.u){if(u.hp<=0)continue;const dd=Math.hypot(u.x-cx,u.y-cy);if(dd<best){best=dd;tg=u}}
+if(tg){b.cd=d.rate;if(!S.god)tg.hp-=d.dmg*(1+.3*(b.l-1));B.fx.push({x1:cx,y1:cy,x2:tg.x,y2:tg.y,t:.12,c:'#e74c3c'})}}
+B.fx.forEach(f=>f.t-=dt);B.fx=B.fx.filter(f=>f.t>0);
+const left=B.army.w+B.army.a+B.army.g,alive=B.u.some(u=>u.hp>0);
+if(B.dead>=B.tot||B.t<=0||(!left&&!alive))endB()}
+/* ---- Zeichnen ---- */
+function drawB(b,hp){const d=D[b.t],s=d.s*T,x=b.x*T,y=b.y*T;
+ctx.fillStyle=b.l===0?'#7f8c8d':d.c;ctx.fillRect(x+2,y+2,s-4,s-4);ctx.strokeStyle='rgba(0,0,0,.45)';ctx.lineWidth=2;ctx.strokeRect(x+2,y+2,s-4,s-4);
+ctx.font=(s*.4)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#000';ctx.fillText(b.l===0?'🔨':d.e,x+s/2,y+s/2);
+ctx.font='bold 11px system-ui';ctx.fillStyle='#fff';ctx.strokeStyle='#000';ctx.lineWidth=3;
+if((!B||mode!='battle')&&d.s>1){const tx='Lv'+(b.l||0)+(b.up?' 🔨':'');ctx.strokeText(tx,x+s/2,y+s-8);ctx.fillText(tx,x+s/2,y+s-8)}
+if(hp!==undefined&&b.hp<b.mx){ctx.fillStyle='#000';ctx.fillRect(x+2,y-4,s-4,5);ctx.fillStyle='#2ecc71';ctx.fillRect(x+3,y-3,(s-6)*b.hp/b.mx,3)}
+if(mode!='battle'&&D[b.t].res&&b.col>=20&&b.l>0){ctx.font='14px serif';ctx.fillText(D[b.t].res=='gold'?'🪙':'💧',x+s-8,y+6)}
+if(sel===b){ctx.strokeStyle='#fff';ctx.lineWidth=3;ctx.strokeRect(x,y,s,s)}}
+function draw(){for(let i=0;i<N;i++)for(let j=0;j<N;j++){ctx.fillStyle=(i+j)%2?'#6aa84f':'#73b058';ctx.fillRect(i*T,j*T,T,T)}
+if(mode=='battle'&&B){ctx.fillStyle='rgba(255,255,255,.12)';ctx.fillRect(0,0,N*T,2*T);ctx.fillRect(0,(N-2)*T,N*T,2*T);ctx.fillRect(0,2*T,2*T,(N-4)*T);ctx.fillRect((N-2)*T,2*T,2*T,(N-4)*T);
+for(const b of B.e){if(b.hp>0)drawB(b,b.hp);else{ctx.fillStyle='#444';const s=D[b.t].s*T;ctx.fillRect(b.x*T+6,b.y*T+6,s-12,s-12)}}
+for(const f of B.fx){ctx.strokeStyle=f.c;ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(f.x1*T,f.y1*T);ctx.lineTo(f.x2*T,f.y2*T);ctx.stroke()}
+for(const u of B.u){if(u.hp<=0)continue;ctx.fillStyle=U[u.k].col;ctx.beginPath();ctx.arc(u.x*T,u.y*T,u.k=='g'?14:10,0,7);ctx.fill();ctx.font=(u.k=='g'?18:13)+'px serif';ctx.textAlign='center';ctx.textBaseline='middle';ctx.fillStyle='#000';ctx.fillText(U[u.k].e,u.x*T,u.y*T+1);ctx.strokeStyle='#000';ctx.lineWidth=1.5;ctx.stroke();
+ctx.fillStyle='#000';ctx.fillRect(u.x*T-9,u.y*T-16,18,4);ctx.fillStyle='#2ecc71';ctx.fillRect(u.x*T-8,u.y*T-15,16*u.hp/u.mx,2)}return}
+S.b.forEach(b=>drawB(b));
+if((placing||mv)&&hov){const s=D[placing||mv.t].s,x0=Math.max(0,Math.min(N-s,Math.round(hov[0]-s/2))),y0=Math.max(0,Math.min(N-s,Math.round(hov[1]-s/2)));
+ctx.fillStyle=free(mv?S.b.filter(b=>b!==mv):S.b,x0,y0,s)?'rgba(255,255,255,.5)':'rgba(231,76,60,.6)';ctx.fillRect(x0*T,y0*T,s*T,s*T)}}
+let last=performance.now();
+function loop(t){const dt=Math.min((t-last)/1000,.1);last=t;
+if(mode=='battle'&&B){updB(dt);if(!B.over&&Math.floor(t/500)!=Math.floor((t-dt*1000)/500))pBattle()}
+tick(dt);draw();$('bu').textContent=buTxt();$('g').textContent='🪙 '+(S.adm?'∞':Math.floor(S.gold)+' / '+cap());$('m').textContent='💧 '+(S.adm?'∞':Math.floor(S.mana)+' / '+capM());
+if(t-lastUi>1000){lastUi=t;if(sel&&mode=='home'&&!login&&!mv)pSel()}
+if(t-lastSave>5000){lastSave=t;save()}requestAnimationFrame(loop)}
+init();requestAnimationFrame(loop);
+</script></body></html>
